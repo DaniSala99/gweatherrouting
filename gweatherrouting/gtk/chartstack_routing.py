@@ -16,6 +16,7 @@ For detail about GNU see <http://www.gnu.org/licenses/>.
 
 import datetime
 import logging
+import math
 import os
 import traceback
 from threading import Thread
@@ -23,6 +24,12 @@ from threading import Thread
 import dateutil.parser
 import gi
 
+from gweatherrouting.core.crosscheck import (
+    AVAILABLE_MODELS,
+    DEFAULT_WARNING_PRECIP_MM,
+    OpenMeteoCrossCheck,
+    models_for_route,
+)
 from gweatherrouting.core.modifiedgrib import ModifiedGribManager
 from gweatherrouting.core.storage import POLAR_DIR
 
@@ -30,6 +37,7 @@ gi.require_version("Gtk", "3.0")
 
 from gi.repository import Gdk, GObject, Gtk
 from weatherrouting import RoutingNoWindError
+from weatherrouting.utils import MS2KT
 
 from gweatherrouting.core import utils
 from gweatherrouting.core.geo.poi import POI
@@ -46,6 +54,7 @@ class ChartStackRouting(ChartStackBase):
     routing_thread = None
     selected_routing = None
     stop_routing = False
+    crosscheck_thread = None
 
     def __init__(self):
         self.currentRouting = None
@@ -464,6 +473,13 @@ class ChartStackRouting(ChartStackBase):
             except Exception:
                 time_str = x[2]
 
+            margin = routing.crosscheck_margin.get(i)
+            precip = routing.crosscheck_precip.get(i)
+            flagged = i in routing.crosscheck_flagged
+            margin_text = f"{(margin - 1) * 100:+.0f}%" if margin is not None else ""
+            precip_text = f"{precip:.1f}" if precip is not None else ""
+            rain_warns = precip is not None and precip >= DEFAULT_WARNING_PRECIP_MM
+
             self.routingPointsStore.append(
                 [
                     i + 1,
@@ -472,6 +488,12 @@ class ChartStackRouting(ChartStackBase):
                     "%.1f" % x[4] if x[4] else "",
                     "%.1f" % x[5] if x[5] else "",
                     "%.0f°" % x[6] if x[6] else "",
+                    margin_text,
+                    "#cc6600" if flagged else "#000000",
+                    flagged,
+                    precip_text,
+                    "#2266cc" if rain_warns else "#000000",
+                    rain_warns,
                 ]
             )
 
@@ -492,6 +514,138 @@ class ChartStackRouting(ChartStackBase):
         self.core.routingManager.remove_by_name(self.selected_routing)
         self.update_routings()
         self.map.queue_draw()
+
+    @staticmethod
+    def _thin_route_points(points, max_points=25):
+        """Pick at most max_points evenly spaced (index, point) pairs,
+        always keeping the first and last. Querying every isopoint would
+        make the cross-check request needlessly large - a route leg's worth
+        of resolution is enough to spot a meaningful wind/gust departure.
+        """
+        n = len(points)
+        if n <= max_points:
+            return list(enumerate(points))
+
+        step = (n - 1) / (max_points - 1)
+        indices = sorted({round(i * step) for i in range(max_points)})
+        return [(i, points[i]) for i in indices]
+
+    def _ask_crosscheck_models(self, default_models):
+        """Show a small dialog letting the user pick which Open-Meteo models
+        to consult. Returns the chosen slugs, or None on cancel."""
+        dialog = Gtk.Dialog(
+            "Cross-check models",
+            self.parent,
+            0,
+            (
+                Gtk.STOCK_CANCEL,
+                Gtk.ResponseType.CANCEL,
+                Gtk.STOCK_OK,
+                Gtk.ResponseType.OK,
+            ),
+        )
+        box = dialog.get_content_area()
+        box.set_spacing(4)
+        box.set_border_width(10)
+
+        label = Gtk.Label(
+            label="Models to compare against the GRIB forecast\n"
+            "(pre-selected: independent cores for this route area)"
+        )
+        label.set_xalign(0)
+        box.add(label)
+
+        checks = {}
+        for slug, name in AVAILABLE_MODELS.items():
+            cb = Gtk.CheckButton(label=name)
+            cb.set_active(slug in default_models)
+            checks[slug] = cb
+            box.add(cb)
+
+        dialog.show_all()
+        response = dialog.run()
+        selected = [slug for slug, cb in checks.items() if cb.get_active()]
+        dialog.destroy()
+
+        if response != Gtk.ResponseType.OK or not selected:
+            return None
+        return selected
+
+    def on_routing_crosscheck(self, widget):
+        if self.crosscheck_thread and self.crosscheck_thread.is_alive():
+            return
+
+        routing = self.core.routingManager.get_by_name(self.selected_routing)
+        if routing is None or len(routing) == 0:
+            return
+
+        thinned = self._thin_route_points(list(routing))
+
+        query_points = []
+        for _, p in thinned:
+            lat, lon, time_str, twd_rad, tws_kt = p[0], p[1], p[2], p[3], p[4]
+            t = dateutil.parser.parse(time_str)
+            twd_deg = math.degrees(twd_rad) % 360 if twd_rad else 0.0
+            tws_ms = (tws_kt / MS2KT) if tws_kt else 0.0
+            query_points.append((lat, lon, t, tws_ms, twd_deg))
+
+        default_models = models_for_route([(p[0], p[1]) for p in query_points])
+        models = self._ask_crosscheck_models(default_models)
+        if models is None:
+            return
+
+        self.crosscheck_thread = Thread(
+            target=self._run_crosscheck, args=(routing, thinned, query_points, models)
+        )
+        self.crosscheck_thread.start()
+
+    def _run_crosscheck(self, routing, thinned, query_points, models=None):
+        Gdk.threads_enter()
+        self.status_bar.push(
+            self.status_bar.get_context_id("Info"),
+            "Checking online wind margin...",
+        )
+        Gdk.threads_leave()
+
+        try:
+            results = OpenMeteoCrossCheck().check(query_points, models=models)
+        except Exception as e:
+            logger.error("Cross-check failed: %s", str(e))
+            traceback.print_exc()
+            Gdk.threads_enter()
+            self.status_bar.push(
+                self.status_bar.get_context_id("Info"),
+                "Wind margin check failed - see logs",
+            )
+            Gdk.threads_leave()
+            self._show_routing_error(f"Online cross-check failed: {e}")
+            return
+
+        margins = {}
+        precips = {}
+        flagged_set = set()
+        for (idx, _), cp in zip(thinned, results):
+            if cp.margin_ratio is not None:
+                margins[idx] = cp.margin_ratio
+            if cp.envelope_precip is not None:
+                precips[idx] = cp.envelope_precip
+            if cp.exceeds_warning or cp.precip_warning:
+                flagged_set.add(idx)
+
+        routing.crosscheck_margin = margins
+        routing.crosscheck_precip = precips
+        routing.crosscheck_flagged = flagged_set
+        flagged = len(flagged_set)
+
+        Gdk.threads_enter()
+        self.status_bar.push(
+            self.status_bar.get_context_id("Info"),
+            f"Weather cross-check done: {flagged}/{len(results)} point(s) flagged",
+        )
+        if self.selected_routing == routing.name:
+            self._update_routing_points(routing.name)
+        self.map.queue_draw()
+        Gdk.threads_leave()
 
     def on_routing_export(self, widget):
         routing = self.core.routingManager.get_by_name(self.selected_routing)

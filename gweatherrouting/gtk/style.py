@@ -135,6 +135,13 @@ class Style:
 
         RoutingBoat = CairoStyle(color=(0, 0.4, 0, 1.0), line_width=5)
 
+        # Online multi-model cross-check: segment where the wind/gust
+        # envelope departs from the GRIB estimate used for routing by more
+        # than the warning threshold (see crosscheck.openmeteo).
+        RoutingTrackCrossCheckWarning = CairoStyle(
+            color=(1.0, 0.55, 0.0, 0.95), line_width=4
+        )
+
     class Poi:
         Dot = CairoStyle(color=(0x11 / 255, 0x11 / 255, 0x11 / 255, 1))
         Quad = CairoStyle(color=(0x11 / 255, 0x11 / 255, 0x11 / 255, 1), line_width=0.3)

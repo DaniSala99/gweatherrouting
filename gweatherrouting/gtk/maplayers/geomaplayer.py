@@ -99,6 +99,8 @@ class GeoMapLayer(GObject.GObject):
                     MapPoint.new_degrees(p[0], p[1])
                 )
 
+                margin_flagged = i in tr.crosscheck_flagged
+
                 # Route name label at start with background
                 if prevp is None and highlight:
                     cr.set_font_size(10)
@@ -160,6 +162,18 @@ class GeoMapLayer(GObject.GObject):
                     cr.line_to(x, y)
                     cr.stroke()
 
+                    # Online cross-check: highlight legs where the
+                    # multi-model wind/gust envelope departs from the GRIB
+                    # estimate used for routing by more than the warning
+                    # threshold.
+                    if margin_flagged:
+                        Style.Track.RoutingTrackCrossCheckWarning.apply(cr)
+                        cr.set_dash([6, 4])
+                        cr.move_to(prevx, prevy)
+                        cr.line_to(x, y)
+                        cr.stroke()
+                        Style.reset_dash(cr)
+
                 # Waypoint markers
                 speed = p[5] if p[5] is not None else 0
                 r, g, b, a = _speed_color(speed)
@@ -168,6 +182,11 @@ class GeoMapLayer(GObject.GObject):
                 cr.set_source_rgba(r, g, b, 1.0)
                 cr.arc(x, y, radius, 0, 2 * math.pi)
                 cr.fill()
+
+                if margin_flagged:
+                    Style.Track.RoutingTrackCrossCheckWarning.apply(cr)
+                    cr.arc(x, y, radius + 4, 0, 2 * math.pi)
+                    cr.stroke()
 
                 prevx = x
                 prevy = y

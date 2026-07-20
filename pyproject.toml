@@ -19,6 +19,7 @@ dependencies = [
     "numpy",
     "nmeatoolkit>=0.2",
     "matplotlib",
+    "Pillow",
     "weatherrouting>=0.2.1",
     "PyGObject==3.50.0",
     "GDAL[numpy]==3.9.2;sys_platform == 'darwin'",

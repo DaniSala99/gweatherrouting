@@ -27,18 +27,21 @@ def start_ui_gtk():
     import gi
 
     gi.require_version("Gtk", "3.0")
-    from gi.repository import GLib, Gtk, GLibUnix
+    from gi.repository import GLib, Gtk
 
     from gweatherrouting.gtk.mainwindow import MainWindow
 
     main_window = MainWindow(Core())
 
-    # Let GLib handle SIGINT so Ctrl+C triggers a clean shutdown
+    # Let GLib handle SIGINT so Ctrl+C triggers a clean shutdown.
+    # GLib-Unix is not available on Windows, where this is a no-op.
     def on_sigint():
         main_window.quit(None, None)
         return GLib.SOURCE_REMOVE
 
     try:
+        from gi.repository import GLibUnix
+
         GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, on_sigint)
     except:
         pass

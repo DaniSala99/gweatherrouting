@@ -25,6 +25,17 @@ class Routing(Track):
         super().__init__(name, points, visible, collection)
         self.isochrones = isochrones
 
+        # Populated in-memory by the optional online cross-check
+        # (see chartstack_routing.on_routing_crosscheck): crosscheck_margin
+        # maps a point index to the multi-model wind margin ratio there,
+        # crosscheck_precip to the precipitation envelope in mm/h, and
+        # crosscheck_flagged holds the indexes worth warning about (wind or
+        # rain). Deliberately not persisted: a snapshot of an online query,
+        # not routing state.
+        self.crosscheck_margin: dict = {}
+        self.crosscheck_precip: dict = {}
+        self.crosscheck_flagged: set = set()
+
     def to_gpx_object(self):
         gpx_route = gpxpy.gpx.GPXRoute()
 

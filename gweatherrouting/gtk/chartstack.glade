@@ -193,6 +193,16 @@ to create a routing path</property>
         <signal name="activate" handler="on_routing_export" swapped="no"/>
       </object>
     </child>
+    <child>
+      <object class="GtkMenuItem">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="tooltip-text" translatable="yes">Cross-check wind and rain along this route against independent Open-Meteo models (requires an internet connection)</property>
+        <property name="label" translatable="yes">Weather cross-check (online)</property>
+        <property name="use-underline">True</property>
+        <signal name="activate" handler="on_routing_crosscheck" swapped="no"/>
+      </object>
+    </child>
   </object>
   <object class="GtkPopover" id="routing-nogrib-error-popover">
     <property name="can-focus">False</property>
@@ -233,6 +243,18 @@ loaded to created a routing</property>
       <column type="gchararray"/>
       <!-- column-name bearing -->
       <column type="gchararray"/>
+      <!-- column-name crosscheck-margin-text -->
+      <column type="gchararray"/>
+      <!-- column-name crosscheck-margin-color -->
+      <column type="gchararray"/>
+      <!-- column-name crosscheck-margin-flagged -->
+      <column type="gboolean"/>
+      <!-- column-name crosscheck-rain-text -->
+      <column type="gchararray"/>
+      <!-- column-name crosscheck-rain-color -->
+      <column type="gchararray"/>
+      <!-- column-name crosscheck-rain-flagged -->
+      <column type="gboolean"/>
     </columns>
   </object>
   <object class="GtkMenu" id="track-item-menu">
@@ -930,6 +952,32 @@ loaded to created a routing</property>
                                   <object class="GtkCellRendererText"/>
                                   <attributes>
                                     <attribute name="text">5</attribute>
+                                  </attributes>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkTreeViewColumn">
+                                <property name="title" translatable="yes">Margin</property>
+                                <child>
+                                  <object class="GtkCellRendererText"/>
+                                  <attributes>
+                                    <attribute name="text">6</attribute>
+                                    <attribute name="foreground">7</attribute>
+                                    <attribute name="foreground-set">8</attribute>
+                                  </attributes>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkTreeViewColumn">
+                                <property name="title" translatable="yes">Rain</property>
+                                <child>
+                                  <object class="GtkCellRendererText"/>
+                                  <attributes>
+                                    <attribute name="text">9</attribute>
+                                    <attribute name="foreground">10</attribute>
+                                    <attribute name="foreground-set">11</attribute>
                                   </attributes>
                                 </child>
                               </object>

@@ -57,6 +57,7 @@ packages = [
     "gweatherrouting.core.utils",
     "gweatherrouting.core.geo",
     "gweatherrouting.core.gribsources",
+    "gweatherrouting.core.crosscheck",
     "gweatherrouting.common",
     "gweatherrouting.gtk",
     "gweatherrouting.gtk.maplayers",
